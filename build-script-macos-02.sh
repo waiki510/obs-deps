@@ -67,32 +67,32 @@ trap cleanup EXIT
 
 caught_error() {
     error "ERROR during build step: ${1}"
-    cleanup $/home/runner/work/obs-deps/obs-deps
+    cleanup $/Users/drboxman/Development/obs-deps
     exit 1
 }
 
-build_346b9331-5e1f-49a7-994e-8a83156c1d52() {
+build_322cab78-2e8b-4765-bc2b-2d66c5a67d3c() {
     step "Install Homebrew dependencies"
     trap "caught_error 'Install Homebrew dependencies'" ERR
-    ensure_dir /home/runner/work/obs-deps/obs-deps
+    ensure_dir /Users/drboxman/Development/obs-deps
 
-    brew bundle
+   # brew bundle
 }
 
 
-build_54c5571f-e0d3-4780-9393-bd44360864b5() {
+build_d3402f98-9242-4302-bf48-c198bab3d395() {
     step "Get Current Date"
     trap "caught_error 'Get Current Date'" ERR
-    ensure_dir /home/runner/work/obs-deps/obs-deps
+    ensure_dir /Users/drboxman/Development/obs-deps
 
 
 }
 
 
-build_d482b142-7d1a-45b7-bcb6-7175b64016f4() {
+build_6b559f89-bb07-4cb3-a877-089be0a5982e() {
     step "Build environment setup"
     trap "caught_error 'Build environment setup'" ERR
-    ensure_dir /home/runner/work/obs-deps/obs-deps
+    ensure_dir /Users/drboxman/Development/obs-deps
 
     mkdir -p CI_BUILD/obsdeps/bin
     mkdir -p CI_BUILD/obsdeps/include
@@ -102,10 +102,10 @@ build_d482b142-7d1a-45b7-bcb6-7175b64016f4() {
 }
 
 
-build_bff0ec03-b2f3-477f-9221-2f7cada6bc96() {
+build_a41fb07f-8c2f-4cae-9a28-e8e45ecdfa6e() {
     step "Build dependency Qt"
     trap "caught_error 'Build dependency Qt'" ERR
-    ensure_dir /home/runner/work/obs-deps/obs-deps/CI_BUILD
+    ensure_dir /Users/drboxman/Development/obs-deps/CI_BUILD
 
     if [ -d /usr/local/opt/zstd ]; then
       brew unlink zstd
@@ -115,14 +115,12 @@ build_bff0ec03-b2f3-477f-9221-2f7cada6bc96() {
     tar -xf qt-everywhere-src-${MAC_QT_VERSION}.tar.xz
     if [ "${MAC_QT_VERSION}" = "5.14.1" ]; then
         cd qt-everywhere-src-${MAC_QT_VERSION}/qtbase
-        git apply /home/runner/work/obs-deps/obs-deps/patch/qt/qtbase.patch
+        git apply /Users/drboxman/Development/obs-deps/patch/qt/qtbase.patch
         cd ..
     fi
     mkdir build
     cd build
-    if [ ! -n "${CI}" ]; then
-      WITH_CCACHE=" -ccache"
-    fi
+
     ../configure ${WITH_CCACHE} --prefix="/tmp/obsdeps" -release -opensource -confirm-license -system-zlib \
       -qt-libpng -qt-libjpeg -qt-freetype -qt-pcre -nomake examples -nomake tests -no-rpath -no-glib -pkg-config -dbus-runtime \
       -skip qt3d -skip qtactiveqt -skip qtandroidextras -skip qtcharts -skip qtconnectivity -skip qtdatavis3d \
@@ -137,27 +135,27 @@ build_bff0ec03-b2f3-477f-9221-2f7cada6bc96() {
 }
 
 
-build_beaabc9b-b0fc-4dcb-b925-8e83414dc812() {
+build_1ec013f2-5128-4b6c-b2f1-f74530043d8b() {
     step "Package dependencies"
     trap "caught_error 'Package dependencies'" ERR
     ensure_dir /tmp
 
     tar -czf macos-qt-${MAC_QT_VERSION}-${CURRENT_DATE}.tar.gz obsdeps
-    if [ ! -d "/home/runner/work/obs-deps/obs-deps/macos" ]; then
-      mkdir /home/runner/work/obs-deps/obs-deps/macos
+    if [ ! -d "/Users/drboxman/Development/obs-deps/macos" ]; then
+      mkdir /Users/drboxman/Development/obs-deps/macos
     fi
-    mv macos-qt-${MAC_QT_VERSION}-${CURRENT_DATE}.tar.gz /home/runner/work/obs-deps/obs-deps/macos
+    mv macos-qt-${MAC_QT_VERSION}-${CURRENT_DATE}.tar.gz /Users/drboxman/Development/obs-deps/macos
 }
 
 
 obs-deps-build-main() {
-    ensure_dir /home/runner/work/obs-deps/obs-deps
+    ensure_dir /Users/drboxman/Development/obs-deps
 
-    build_346b9331-5e1f-49a7-994e-8a83156c1d52
-    build_54c5571f-e0d3-4780-9393-bd44360864b5
-    build_d482b142-7d1a-45b7-bcb6-7175b64016f4
-    build_bff0ec03-b2f3-477f-9221-2f7cada6bc96
-    build_beaabc9b-b0fc-4dcb-b925-8e83414dc812
+    build_322cab78-2e8b-4765-bc2b-2d66c5a67d3c
+    build_d3402f98-9242-4302-bf48-c198bab3d395
+    build_6b559f89-bb07-4cb3-a877-089be0a5982e
+    build_a41fb07f-8c2f-4cae-9a28-e8e45ecdfa6e
+    build_1ec013f2-5128-4b6c-b2f1-f74530043d8b
 
     hr "All Done"
 }
