@@ -11,6 +11,29 @@
 # Halt on errors
 set -eE
 
+_patch_product() {
+    cd "${PRODUCT_FOLDER}"
+
+    step "Apply patches..."
+    # apply flv, hls, aom patch
+    apply_patch "${CHECKOUT_DIR}/CI/patches/FFmpeg-9010.patch" "97ac6385c2b7a682360c0cfb3e311ef4f3a48041d3f097d6b64f8c13653b6450"
+    apply_patch "${CHECKOUT_DIR}/CI/patches/FFmpeg-4.4.1-OBS.patch" "710fb5a381f7b68c95dcdf865af4f3c63a9405c305abef55d24c7ab54e90b182"
+    # The librist patch consists in these 3 commits which haven't been backported to FFmpeg 4.4 :
+    # [1] avformat/internal: Move ff_read_line_to_bprint_overwrite to avio_internal.h
+    # https://github.com/FFmpeg/FFmpeg/commit/fd101c9c3bcdeb2d74274aaeaa968fe8ead3622d#diff-bc82665cda5e82b13bcd3e1ee74d820952d80acba839ac46ffed3f0785644200
+    # [2] avformat/librist: replace deprecated functions
+    # https://github.com/FFmpeg/FFmpeg/commit/5274f2f7f8c5e40d18b84055fbb232752bd24f2f#diff-bc82665cda5e82b13bcd3e1ee74d820952d80acba839ac46ffed3f0785644200
+    # [3] avformat/librist: correctly initialize logging_settings
+    # https://github.com/FFmpeg/FFmpeg/commit/9b15f43cf8c7976fba115da686a990377f7b5ab9
+    # The following is an important patch submitted by librist devs, but not yet merged into FFmpeg master
+    # [4] avformat/librist: allow setting fifo size and fail on overflow.
+    # http://ffmpeg.org/pipermail/ffmpeg-devel/2021-November/287914.html
+    apply_patch "${CHECKOUT_DIR}/CI/patches/FFmpeg-4.4.1-libaomenc.patch" "AEDBA40CEA296D73CBF8BFC6365C0D93237F9177986B96B07C1D2C4C5CFB896C"
+    apply_patch "${CHECKOUT_DIR}/CI/patches/FFmpeg-4.4.1-librist.patch" "1B95F21375421830263A73C74B80852E60EFE10991513CFCC8FB7CBE066887F5"
+    git add .
+    git commit -m "OBS patches for flvenc, hlsenc, aomenc & librist"
+}
+
 _fixup_ffmpeg_libs() {
     LIBS=$(find "${BUILD_DIR}/lib" -type f \( -name "libav*.dylib" -o -name "libsw*.dylib" -o -name "libpostproc*.dylib" \))
 
@@ -67,13 +90,13 @@ _build_product() {
         step "Configure (x86_64)..."
 
         PKG_CONFIG_PATH="${BUILD_DIR}/lib/pkgconfig" ../configure \
-            --enable-libx264 --enable-libopus --enable-libvorbis --enable-libvpx --enable-libsrt --enable-libtheora --enable-libmp3lame --enable-version3 --enable-gpl --enable-videotoolbox \
+            --enable-libx264 --enable-libopus --enable-libvorbis --enable-libvpx --enable-libsrt --enable-librist --enable-libtheora --enable-libmp3lame --enable-libaom --enable-version3 --enable-gpl --enable-videotoolbox \
             --disable-libjack --disable-indev=jack --disable-outdev=sdl --disable-programs --disable-doc  \
             --enable-cross-compile --enable-shared --disable-static --enable-pthreads \
             --shlibdir="${BUILD_DIR}/lib" --pkg-config-flags="--static" --prefix="${BUILD_DIR}" --enable-rpath \
             --host-cflags="-I${BUILD_DIR}/include" --host-ldflags="-L${BUILD_DIR}/lib"  \
-            --extra-ldflags="-target x86_64-apple-macos${DARWIN_TARGET} -L${BUILD_DIR}/lib -lstdc++" \
-            --extra-cflags="-fno-stack-check -target x86_64-apple-macos${DARWIN_TARGET} -I${BUILD_DIR}/include" \
+            --extra-ldflags="-target x86_64-apple-macos10.13 -L${BUILD_DIR}/lib -lstdc++" \
+            --extra-cflags="-fno-stack-check -target x86_64-apple-macos10.13 -I${BUILD_DIR}/include" \
             --arch=x86_64
 
         step "Build (x86_64)..."
@@ -86,13 +109,13 @@ _build_product() {
 
         step "Configure (arm64)..."
         PKG_CONFIG_PATH="${BUILD_DIR}/lib/pkgconfig" ../configure \
-            --enable-libx264 --enable-libopus --enable-libvorbis --enable-libvpx --enable-libsrt --enable-libtheora --enable-libmp3lame --enable-version3 --enable-gpl --enable-videotoolbox \
+            --enable-libx264 --enable-libopus --enable-libvorbis --enable-libvpx --enable-libsrt --enable-librist --enable-libtheora --enable-libmp3lame --enable-libaom --enable-version3 --enable-gpl --enable-videotoolbox \
             --disable-libjack --disable-indev=jack --disable-outdev=sdl --disable-programs --disable-doc  \
             --enable-cross-compile --enable-shared --disable-static --enable-pthreads --enable-rpath \
             --shlibdir="${BUILD_DIR}/lib" --pkg-config-flags="--static" --prefix="${BUILD_DIR}" \
             --host-cflags="-I${BUILD_DIR}/include" --host-ldflags="-L${BUILD_DIR}/lib"  \
-            --extra-ldflags="-target arm64-apple-macos20 -L${BUILD_DIR}/lib -lstdc++" \
-            --extra-cflags="-fno-stack-check -target arm64-apple-macos20 -I${BUILD_DIR}/include" \
+            --extra-ldflags="-target arm64-apple-macos11 -L${BUILD_DIR}/lib -lstdc++" \
+            --extra-cflags="-fno-stack-check -target arm64-apple-macos11 -I${BUILD_DIR}/include" \
             --arch=arm64
 
         step "Build (arm64)..."
@@ -138,14 +161,14 @@ build-ffmpeg-main() {
         _build_checks
     fi
 
-    PRODUCT_URL="https://ffmpeg.org/releases/ffmpeg-${PRODUCT_VERSION:-${CI_PRODUCT_VERSION}}.tar.xz"
-    PRODUCT_FILENAME="$(basename "${PRODUCT_URL}")"
-    PRODUCT_FOLDER="${PRODUCT_FILENAME%.*.*}"
+    PRODUCT_PROJECT="FFmpeg"
+    PRODUCT_REPO="ffmpeg"
+    PRODUCT_FOLDER="${PRODUCT_REPO}-${PRODUCT_VERSION:-${CI_PRODUCT_VERSION}}"
 
     if [ -z "${INSTALL}" ]; then
         _add_ccache_to_path
 
-        _build_setup
+        _build_setup_git
         _build
    else
         _install_product

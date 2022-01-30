@@ -11,27 +11,39 @@
 
 ## DEFINE UTILITIES ##
 
-status() {
-    script_output "${COLOR_BLUE}[${PRODUCT_NAME}] ${1}${COLOR_RESET}"
-}
+if [ -z "${QUIET}" ]; then
+    status() {
+        echo -e "${COLOR_BLUE}[${PRODUCT_NAME}] ${1}${COLOR_RESET}"
+    }
 
-step() {
-    script_output "${COLOR_GREEN}  + ${1}${COLOR_RESET}"
-}
+    step() {
+        echo -e "${COLOR_GREEN}  + ${1}${COLOR_RESET}"
+    }
 
-info() {
-    script_output "${COLOR_ORANGE}  + ${1}${COLOR_RESET}"
-}
+    info() {
+        echo -e "${COLOR_ORANGE}  + ${1}${COLOR_RESET}"
+    }
 
-error() {
-    echo -e "${COLOR_RED}  + ${1}${COLOR_RESET}"
-}
+    error() {
+        echo -e "${COLOR_RED}  + ${1}${COLOR_RESET}"
+    }
+else
+    status() {
+        :
+    }
 
-script_output() {
-    if [ -z "${QUIET}" ]; then
-        echo -e "${1}"
-    fi
-}
+    step() {
+        :
+    }
+
+    info() {
+        :
+    }
+
+    error() {
+        echo -e "${COLOR_RED}  + ${1}${COLOR_RESET}"
+    }
+fi
 
 exists() {
   /usr/bin/command -v "$1" >/dev/null 2>&1
@@ -57,8 +69,21 @@ BUILD_CONFIG="${BUILD_CONFIG:-RelWithDebInfo}"
 CI_WORKFLOW="${CHECKOUT_DIR}/.github/workflows/main.yml"
 CURRENT_ARCH="$(uname -m)"
 CURRENT_DATE="$(date +"%Y-%m-%d")"
+GIT_VERSION=""
 
 ## Utility functions ##
+
+is_gte() {
+    if [ "$(echo $@ | tr ' ' '\n' | sort -rV | head -n1)" = "$1" ]; then
+        echo "true"
+    fi
+}
+
+git_has_sparse_checkout() {
+    if [ "$(is_gte ${GIT_VERSION} 2.25)" ]; then
+        echo "true"
+    fi
+}
 
 check_ccache() {
     step "Check CCache..."
@@ -77,14 +102,30 @@ check_ccache() {
     fi
 }
 
-_add_ccache_to_path() {
-    if [ "${CMAKE_CCACHE_OPTIONS}" ]; then
-        PATH="/usr/local/opt/ccache/libexec:${PATH}"
-        status "Compiler Info:"
-        local IFS=$'\n'
-        for COMPILER_INFO in $(type cc c++ gcc g++ clang clang++); do
-            info "${COMPILER_INFO}"
-        done
+check_git() {
+    step "Check git..."
+    if git --version >/dev/null 2>&1; then
+        GIT_VERSION="$(git --version | sed -e 's/git version //')"
+        info "Git version ${GIT_VERSION} available"
+
+        info "Check git config for user..."
+        git_user_email=$(git config --get user.email)
+        if [ -z "$git_user_email" ]; then
+            info "Set git user.email..."
+            git config user.email "commits@obsproject.com"
+        else
+            info "Git user.email already set"
+        fi
+
+        git_user_name=$(git config --get user.name)
+        if [ -z "$git_user_name" ]; then
+            info "Set git user.name..."
+            git config user.name "OBS Project"
+        else
+            info "Git user.name already set"
+        fi
+    else
+        error "Git not available"
     fi
 }
 
@@ -148,7 +189,7 @@ check_and_fetch() {
 }
 
 github_fetch() {
-    if [ $# -ne 3 ]; then
+    if [ $# -lt 3 ]; then
         error "Usage: github_fetch GITHUB_USER GITHUB_REPOSITORY GITHUB_COMMIT_HASH"
         return 1
     fi
@@ -156,6 +197,7 @@ github_fetch() {
     GH_USER="${1}"
     GH_REPO="${2}"
     GH_REF="${3}"
+    GIT_OPT_SPARSE="${4}"
 
     if [ -d "./.git" ]; then
         info "Repository ${GH_USER}/${GH_REPO} already exists, updating..."
@@ -164,7 +206,7 @@ github_fetch() {
         git config remote.origin.fetch "+refs/heads/master:refs/remotes/origin/master"
         git config remote.origin.tapOpt --no-tags
 
-        if ! git rev-parse -q --verify "${GH_COMMIT}^{commit}"; then
+        if ! git rev-parse -q --verify "${GH_REF}^{commit}"; then
             git fetch origin
         fi
 
@@ -176,7 +218,12 @@ github_fetch() {
         fi
 
     else
-        git clone "https://github.com/${GH_USER}/${GH_REPO}.git" "$(pwd)"
+        if [ "${CI}" ] && [ "$(git_has_sparse_checkout)" ] && [ "${GIT_OPT_SPARSE}" ]; then
+            git clone --filter=blob:none --no-checkout "https://github.com/${GH_USER}/${GH_REPO}.git" "$(pwd)"
+            git sparse-checkout ${GIT_OPT_SPARSE}
+        else
+            git clone "https://github.com/${GH_USER}/${GH_REPO}.git" "$(pwd)"
+        fi
         git config advice.detachedHead false
         info "Checking out commit ${GH_REF}..."
         git checkout -f "${GH_REF}" --
